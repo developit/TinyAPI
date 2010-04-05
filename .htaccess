@@ -1,0 +1,12 @@
+
+	# turn the rewriting engine on:
+RewriteEngine On
+
+	# [optional] only rewrite things within a directory:
+#RewriteCond $1 ^api\/
+
+	# rewrite all URLs that are not directly mapped to files:
+RewriteCond %{REQUEST_FILENAME} !-f
+
+	# point rewritten URLs to the bootstrap/loader script:
+RewriteRule ^(.*)$ /api/index\.php/$1
