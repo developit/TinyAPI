@@ -1,0 +1,12 @@
+TinyAPI is a very small PHP framework for creating APIs. It maps URLs to methods of classes, so you can write real PHP. Write portable classes, and use TinyAPI to expose them to the web. There is also magic.
+
+TinyAPI consists of 7 files/directories that should be uploaded to the directory you want to turn into an API.
+
+.htaccess
+index.php
+methods/
+tinyapi/
+tinyapi/main.php
+tinyapi/lib/
+tinyapi/lib/array_to_xml.inc.php
+
