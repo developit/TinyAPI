@@ -245,6 +245,7 @@ class API {
 				break;
 		}
 		
+		
 		// automatically set Content-Length if not already set
 		if (empty($this->headers['content-length'])) {
 			$this->headers['content-length'] = strlen($body);
@@ -306,7 +307,8 @@ class API {
 			$lc = strtolower($header);
 			if (substr($lc, 0, 5)==='http/') {
 				$key = 'status';
-				$value = preg_replace('/^http\/[0-9\.]+\s*(.*)\s*$/sim', '$1', $header);
+				//$value = preg_replace('/^http\/[0-9\.]+\s*(.*)\s*$/sim', '$1', $header);
+				$value = $header;
 				// if no spaces, use status code only
 				if (strpos($value, ' ')===FALSE) {
 					$value = intval($value);
