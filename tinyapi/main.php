@@ -136,14 +136,25 @@ class API {
 			// dynamically execute it, removing PHP start/end tags (they would cause syntax errors)
 			$class = eval(preg_replace("/^\s*?<\?(php)?(.+)\?>$/sim", "$2", $code));
 			
-			if (!is_object($myinstance) && is_string($class)) {
+			$is_class = !is_object($myinstance) && is_string($class);
+			
+			//die(var_dump(method_exists($class, $method_name) && is_callable(array($class, $method_name))));
+			
+			// check if the method is available statically
+			if ($is_class && method_exists($class, $method_name) && is_callable(array($class, $method_name))) {
+				return call_user_func(array($class, $method_name));
+			}
+			// else, instance the class
+			elseif ($is_class) {
 				$class = new $class();
 			}
 			
 			if ($class) {
+				// check if the requested method exists
 				if (method_exists($class, $method_name)) {
 					return $class->$method_name();
 				}
+				// check if an error method exists
 				else if (method_exists($class, 'error')) {
 					return $class->error();
 				}
