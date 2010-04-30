@@ -5,7 +5,7 @@
 
 
 $tinyapi_config = array(
-	'method_dir'	=> 'methods/'
+	'method_dir'	=> 'public/'
 );
 
 
