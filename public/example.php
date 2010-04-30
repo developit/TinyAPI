@@ -7,7 +7,7 @@ class Example {
 	 *	or, alternatively:
 	 *		[api-root]/example/index
 	 */
-	public function index() {
+	public static function index() {
 		return array(
 			"hello" => TRUE
 		);
@@ -19,13 +19,13 @@ class Example {
 	 *	Note: method names, and URLs are case-INsensitive. 
 	 *	      However, filenames must be lowercase.
 	 */
-	public function alternateSubExample() {
+	public static function alternateSubExample() {
 		return array(
 			"hello" => TRUE
 		);
 	}
 }
 
-return new Example();
+return Example;
 
 ?>

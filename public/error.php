@@ -1,20 +1,14 @@
 <?php
+
 class Error {
-	public function index() {
+	public static function index() {
 		return array(
-			"did_we_error" => true,
-			"source" => "/api/error.php -> index();"
-		);
-	}
-	
-	public function error() {
-		return array(
-			"did_we_error" => true,
-			"source" => "/api/error.php -> error()"
+			"result" => FALSE,
+			"message" => "Routing error: method not found."
 		);
 	}
 }
 
-return new Error();
+return Error;
 
 ?>

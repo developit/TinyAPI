@@ -5,7 +5,7 @@ class SubExample {
 	 *	This method is called for the following URL:
 	 *		[api-root]/example/subExample/
 	 */
-	public function index() {
+	public static function index() {
 		return array(
 			"hello" => TRUE
 		);
@@ -15,7 +15,7 @@ class SubExample {
 	 *	This method is called for the following URL:
 	 *		[api-root]/example/subExample/anotherSubExample/
 	 */
-	public function anothersubexample() {
+	public static function anothersubexample() {
 		return array(
 			"hello" => TRUE
 		);
@@ -25,7 +25,7 @@ class SubExample {
 	 *	Underscores in mapped method names are mapped to "/".
 	 *	This method could also have been placed at: ./anothersubexample.php::fourth()
 	 */
-	public function anothersubexample_fourth() {
+	public static function anothersubexample_fourth() {
 		return array(
 			"hello" => TRUE
 		);
@@ -36,11 +36,11 @@ class SubExample {
 	 *	This is also true for methods named with two or more consecutive underscores.
 	 *		(logical, since __construct and __destruct should not be mapped to URLs)
 	 */
-	private function privateMethod() {
+	private static function privateMethod() {
 		// this method is private and not accessible outside of this class.
 	}
 }
 
-return new SubExample();
+return SubExample;
 
 ?>
