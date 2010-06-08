@@ -1,6 +1,6 @@
 <?php
 
-// Tiny API Framework
+// TinyAPI Framework
 //     -- CORE --
 
 class API {
@@ -12,11 +12,11 @@ class API {
 			'formatters'		=> array()
 		),
 		$output			= array(),			// where structured output is stored until finish();
-		$headers		= array(			// HTTP headers, lower-cased
-			'content-type'	=> 'text/plain'
-		),
+		$headers		= array(),			// HTTP headers, lower-cased
+		$default_content_type = 'text/plain',
 		$default_format	= 'json',			// why of course
 		$basepath		= '',				// path to this file
+		$include_path	= '',
 		$log_messages	= array();			// stores log message
 	
 	function __construct($args=NULL) {
@@ -27,6 +27,11 @@ class API {
 	public static function init() {
 		global $tinyapi_config;
 		
+		$new_include_path = (function_exists('get_include_path') ? get_include_path() : ini_get('include_path'));
+		$new_include_path = dirname(__FILE__) . PATH_SEPARATOR . dirname(dirname(__FILE__)) . PATH_SEPARATOR . $new_include_path;
+		function_exists('set_include_path') ? set_include_path( $new_include_path ) : ini_set('include_path', $new_include_path);
+		self::$include_path = $new_include_path;
+		
 		self::$config['directory_separator'] = self::oreo(DIRECTORY_SEPARATOR, '/');
 		
 		self::$basepath = self::getBasePath();
@@ -35,7 +40,12 @@ class API {
 			self::loadConfig($tinyapi_config);
 		}
 		
-		$response = self::exec(self::getRelativeUrl($_SERVER['REQUEST_URI']));
+		$request_uri = $_SERVER['REQUEST_URI'];
+		if (strpos($request_uri,'?')!==FALSE) {
+			$request_uri = substr($request_uri, 0, strpos($request_uri,'?'));
+		}
+		
+		$response = self::exec(self::getRelativeUrl($request_uri));
 		if ($response!==FALSE) {
 			self::$output = $response;
 		}
@@ -58,9 +68,12 @@ class API {
 	
 	
 	/*
-	 *	Execute the method matching a URL or method name.
+	 *	Execute the method matching a URL or method name. Optionally override $_GET and $_POST. If either overrides are set, both are overwritten.
+	 *	@param method			A URL relative to TinyAPI's installed root. This is how the method is found.
+	 *	@param override_get		Optional associative array of GET parameters. Overwrites $_GET while executing the routed method.
+	 *	@param override_post	Optional associative array of POST parameters. Overwrites $_POST while executing the routed method.
 	 */
-	public static function exec($method='') {
+	public static function exec($method='', $override_get=NULL, $override_post=NULL) {
 		if (strpos($method, '?')!==FALSE) {
 			$method = substr($method, 0, strpos($method, '?'));
 		}
@@ -86,9 +99,17 @@ class API {
 			$method = substr($method, 0, -1);
 		}
 		
-		$method_dir = substr($method, 0, strrpos($method, '/'));
+		//$method_dir = substr($method, 0, strrpos($method, '/'));
+		$method_dir = dirname($method);
+		if ($method_dir==='.') {
+			$method_dir = '';
+		}
+		elseif (substr($method_dir, -1, 1)==='/') {
+			$method_dir = substr($method_dir, 0, -1);
+		}
 		$method_file = basename($method);
 		
+		//die($method_dir);
 		
 		$dir = self::$config['method_dir'];
 		$pre = self::$config['method_file_pre'];
@@ -97,9 +118,11 @@ class API {
 		if (substr($dir, -1, 1)!=='/') {
 			$dir .= '/';
 		}
-		if (substr($dir, 0, 1)==='/') {
-			$dir = substr($dir, 1);
+		if (substr($dir, 0, 2)==='./') {
+			$dir = realpath(dirname(__FILE__)) . substr($dir, 1);
 		}
+		
+		//echo $dir.$method_dir.$pre.$method_file.$ext . "\n\n";
 		
 		$method_dirs = explode('/', $method);
 		
@@ -110,7 +133,7 @@ class API {
 				$method_name = $method_file;
 			}
 			else {
-				$method_name .= '_'.$method_file;
+				$method_name = $method_file . '_' . $method_name;
 			}
 			if (strrpos($method_dir, '/')===FALSE) {
 				$method_file = $method_dir;
@@ -134,39 +157,121 @@ class API {
 		
 		$filename = $dir.$method_dir.$pre.$method_file.$ext;
 		
+		
+		$strict_return = FALSE;
+		$return_value = NULL;
+		
 		if (is_file($filename)) {
-			
 			// pull in the code
 			$code = file_get_contents($filename);
+			
+			$file_include_path = realpath(dirname($filename)) . PATH_SEPARATOR . self::$include_path;
+			if (function_exists('set_include_path')) {
+				set_include_path($file_include_path);
+			}
+			else {
+				ini_set('include_path', $file_include_path);
+			}
+			
+			
+			if (is_array($override_get) || is_array($override_post)) {
+				$previous_request_params = array_merge(array(), $_REQUEST);
+				foreach($_REQUEST as $key=>$value) {
+					unset($_REQUEST[$key]);
+				}
+				$previous_get_params = array_merge(array(), $_GET);
+				foreach($_GET as $key=>$value) {
+					unset($_GET[$key]);
+				}
+				$previous_post_params = array_merge(array(), $_POST);
+				foreach($_POST as $key=>$value) {
+					unset($_POST[$key]);
+				}
+				if (is_array($override_get)) {
+					foreach ($override_get as $key=>$val) {
+						$_REQUEST[$key] = $val;
+						$_GET[$key] = $val;
+					}
+				}
+				if (is_array($override_post)) {
+					foreach ($override_post as $key=>$val) {
+						$_REQUEST[$key] = $val;
+						$_POST[$key] = $val;
+					}
+				}
+			}
+			
+			
+			//echo ini_get('include_path') . "\n\n";
 			
 			// dynamically execute it, removing PHP start/end tags (they would cause syntax errors)
 			$class = eval(preg_replace("/^\s*?(<\?(php)?)?(.+)(\?>)?$/sim", "$3", $code));
 			
-			$is_class = is_string($class);
+			if (function_exists('get_include_path')) {
+				set_include_path(self::$include_path);
+			}
+			else {
+				ini_get('include_path', self::$include_path);
+			}
+			
+			//echo ini_get('include_path') . "\n\n";
+			
+			
+			$is_class = is_string($class);		// || class_exists($class);
+			
+			//self::log('$is_class='.strval($is_class).', method_exists($class, $method_name)='.strval(method_exists($class, $method_name)).' //');
+			self::log($class . ' :: ' . $method_name);
 			
 			// check if the method is available statically
 			if ($is_class && method_exists($class, $method_name) && is_callable(array($class, $method_name))) {
-				return self::oreo(call_user_func(array($class, $method_name)), array());
+				$strict_return = TRUE;
+				$return_value = self::oreo(call_user_func(array($class, $method_name)), array());
 			}
 			// else, instance the class
 			elseif ($is_class) {
 				$class = new $class();
 			}
 			
-			if ($class) {
+			if ($class && $strict_return!==TRUE) {
 				// check if the requested method exists
 				if (method_exists($class, $method_name)) {
-					return self::oreo($class->$method_name(), array());
+					$strict_return = TRUE;
+					$return_value = self::oreo($class->$method_name(), array());
 				}
 				// check if an error method exists
 				else if (method_exists($class, 'error')) {
-					return self::oreo($class->error(), array());
+					$strict_return = TRUE;
+					$return_value = self::oreo($class->error(), array());
 				}
 			}
-		
+			
+			
+			if (is_array($override_get) || is_array($override_post)) {
+				// reset REQUEST
+				foreach($_REQUEST as $key=>$value) {
+					unset($_REQUEST[$key]);
+				}
+				foreach($previous_request_params as $key=>$value) {
+					$_REQUEST[$key] = $value;
+				}
+				// reset GET
+				foreach($_GET as $key=>$value) {
+					unset($_GET[$key]);
+				}
+				foreach($previous_get_params as $key=>$value) {
+					$_GET[$key] = $value;
+				}
+				// reset POST
+				foreach($_POST as $key=>$value) {
+					unset($_POST[$key]);
+				}
+				foreach($previous_post_params as $key=>$value) {
+					$_POST[$key] = $value;
+				}
+			}
 		}
 		
-		return FALSE;
+		return $strict_return===TRUE ? $return_value : FALSE;
 	}
 	
 	
@@ -180,7 +285,8 @@ class API {
 			$user_format = self::$config['format_override'];
 		}
 		else {
-			$user_format = self::oreo(self::$config['format'], $_REQUEST['format']);
+			//$user_format = self::oreo(self::arrayValue(self::$config,'format')!==NULL, self::arrayValue($_REQUEST,'format'));
+			$user_format = isset($_REQUEST['format']) ? $_REQUEST['format'] : self::$config['format'];
 		}
 		
 		$format = self::oreo($user_format, self::$default_format);
@@ -195,7 +301,7 @@ class API {
 		$format_lower = strtolower($format);
 		$formatter_found = FALSE;
 		// Custom formatters.
-		if (is_array(self::$config['formatters'])) {
+		if (is_array(self::arrayValue(self::$config, 'formatters'))) {
 			foreach (self::$config['formatters'] as $search_format=>$search_value) {
 				if (strtolower($search_format)===$format_lower) {
 					// Try CustomResponseFormatter::format($output, $format)
@@ -226,13 +332,16 @@ class API {
 					}
 					
 					if ($is_empty===TRUE) {
-						$body = json_encode((object) self::$output);
+						$body = self::json_encode((object) self::$output);
 					}
 					else {
-						$body = json_encode(self::$output);
+						$body = self::json_encode(self::$output);
 					}
 					
-					$callback = self::oreo($_GET['callback'], $_GET['jsonp_callback']);
+					$callback = self::oreo(
+						self::arrayValue($_GET,'callback',TRUE),
+						self::arrayValue($_GET,'jsonp_callback',TRUE)
+					);
 					
 					if (isset($callback)) {
 						// set the correct header for JSONp
@@ -248,12 +357,12 @@ class API {
 						
 						// callback parameter as json-string
 						// FORMAT:  callback( String json , [String id] )
-						if (strval($_GET['jsonp_string'])==='true' || strval($_GET['jsonp_string'])==='1') {
+						if (strval(self::arrayValue($_GET,'jsonp_string',TRUE))==='true' || strval(self::arrayValue($_GET,'jsonp_string',TRUE))==='1') {
 							$body = self::formatJsonpCallback($callback) . '("' . addslashes($body) . '"' . $idt . ');';
 						}
 						// jsonp + try..catch
 						// FORMAT:  callback( (Object) json , [Error parseError] , [String id] )
-						else if (strval($_GET['jsonp_try'])==='true' || strval($_GET['jsonp_try'])==='1') {
+						else if (strval(self::arrayValue($_GET,'jsonp_try',TRUE))==='true' || strval(self::arrayValue($_GET,'jsonp_try',TRUE))==='1') {
 							$body = '(function(j,e){try{j=' . $body . '}catch(a){e=a;}' . self::formatJsonpCallback($callback) . '(j,e' . $idt . ');})();';
 						}
 						// 'normal' jsonp
@@ -289,6 +398,13 @@ class API {
 						self::log("Could not locate lib/array_to_xml.inc.php (required for the XML output format).");
 					}
 					break;
+				
+				default:
+					$body = var_export(self::$output, TRUE);
+					if (empty(self::$headers['content-type'])) {
+						self::$headers['content-type'] = 'text/plain';
+					}
+					self::$headers['x-tinyapi-format'] = 'php-serialized';
 			}
 		}
 		
@@ -296,6 +412,9 @@ class API {
 		// automatically set Content-Length if not already set
 		if (empty(self::$headers['content-length'])) {
 			self::$headers['content-length'] = strlen($body);
+		}
+		if (empty(self::$headers['content-type'])) {
+			self::$headers['content-type'] = self::$default_content_type;
 		}
 		if (empty(self::$headers['status'])) {
 			self::$headers['status'] = 200;
@@ -315,7 +434,7 @@ class API {
 			// send response headers
 			foreach (self::$headers as $h_key=>$h_value) {
 				if ($h_key==='status') {
-					// for custom statu code/description pairs
+					// for custom status code/description pairs
 					if ($skip_status===FALSE) {
 						header($h_value);
 					}
@@ -323,7 +442,7 @@ class API {
 				else {
 					if (is_array($h_value)) {
 						foreach ($h_value as $v) {
-							header( ucwords($h_key) . ': ' . preg_replace('/\r\n(\t)?/sm', '\r\n\t', $h_value), TRUE, $status_code );
+							header( ucwords($h_key) . ': ' . preg_replace('/\r\n(\t)?/sm', '\r\n\t', $v), TRUE, $status_code );
 							$status_code = NULL;
 						}
 					}
@@ -396,12 +515,65 @@ class API {
 	public static function loadConfig($new_config=array()) {
 		if (is_array($new_config) || is_object($new_config)) {
 			foreach ($new_config as $key=>$value) {
-				if (is_array(self::$config[$key]) && is_array($value)) {
-					array_merge(self::$config[$key], $value);
+				if (is_array(self::arrayValue(self::$config,$key)) && is_array($value)) {
+					self::$config[$key] = array_merge(self::$config[$key], $value);
 				}
 				else {
 					self::$config[$key] = $value;
 				}
+			}
+		}
+	}
+	
+	/*
+	 *	Return an encoded JSON string
+	 */
+	public static function json_encode($obj) {
+		if (function_exists('json_encode')) {
+			return json_encode($obj);
+		}
+		else {
+			if (is_null($obj)) {
+				return 'null';
+			}
+			if (is_bool($obj)) {
+				return $obj===TRUE ? 'true' : 'false';
+			}
+			if (is_scalar($obj)) {
+				if (is_float($obj)) {
+					// Always use "." for floats.
+					return floatval(str_replace(",", ".", strval($obj)));
+				}
+				if (is_string($obj)) {
+					static $jsonReplaces = array(
+						array("\\", "/", "\n", "\t", "\r", "\b", "\f", '"'),
+						array('\\\\', '\\/', '\\n', '\\t', '\\r', '\\b', '\\f', '\"')
+					);
+					return '"' . str_replace($jsonReplaces[0], $jsonReplaces[1], $obj) . '"';
+				}
+				else {
+					return $obj;
+				}
+			}
+			$isList = true;
+			for ($i=0, reset($obj); $i<count($obj); $i++, next($obj)) {
+				if (key($obj)!==$i) {
+					$isList = false;
+					break;
+				}
+			}
+			$result = array();
+			if ($isList) {
+				foreach ($obj as $v) {
+					$result []= self::json_encode($v);
+				}
+				return '[' . join(',', $result) . ']';
+			}
+			else {
+				foreach ($obj as $k=>$v) {
+					$result []= self::json_encode($k) . ':' . self::json_encode($v);
+				}
+				return '{' . join(',', $result) . '}';
 			}
 		}
 	}
@@ -417,6 +589,40 @@ class API {
 			}
 		}
 		return $args[count($args)-1];
+	}
+	
+	
+	/*
+	 *	Get the corresponding array value for a key if it exists, else NULL
+	 */
+	public static function arrayValue($array=NULL, $key=NULL, $strict=FALSE) {
+		if (!isset($array) || !isset($key)) {
+			return NULL;
+		}
+		if ($strict===TRUE) {
+			if (is_array($array)) {
+				if (array_key_exists($key, $array)) {
+					return $array[$key];
+				}
+			}
+			elseif (is_object($array)) {
+				if (function_exists('property_exists')) {
+					return property_exists($array, $key) ? $array->$key : NULL;
+				}
+				else {
+					return array_key_exists($array, $key) ? $array->$key : NULL;
+				}
+			}
+		}
+		else {
+			if (is_array($array) && isset($array[$key])) {
+				return $array[$key];
+			}
+			elseif (is_object($array) && isset($array->$key)) {
+				return $array->$key;
+			}
+		}
+		return NULL;
 	}
 	
 	
@@ -437,7 +643,7 @@ class API {
 	
 	private static function getBasePath() {
 		$origname = preg_replace('/(\/)[a-z0-9]+\.[a-z0-9]{1,9}$/sim','$1', substr($_SERVER['SCRIPT_FILENAME'], strlen($_SERVER['DOCUMENT_ROOT'])));
-		return self::oreo(self::$config['base_uri'], $origname);
+		return self::oreo(self::arrayValue(self::$config,'base_uri'), $origname);
 	}
 	
 	
@@ -469,8 +675,9 @@ class API {
 }
 
 
-if (!is_array($tinyapi_config) || $tinyapi_config["autoinit"]!==FALSE) {
+if (!is_array($tinyapi_config) || API::arrayValue($tinyapi_config, 'autoinit')!==FALSE) {
 	API::init();
 }
+
 
 ?>
