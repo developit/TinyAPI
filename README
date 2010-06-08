@@ -1,12 +1,18 @@
 TinyAPI is a very small PHP framework for creating APIs. It maps URLs to methods of classes, so you can write real PHP. Write portable classes, and use TinyAPI to expose them to the web. There is also magic.
 
-TinyAPI consists of 7 files/directories that should be uploaded to the directory you want to turn into an API.
+TinyAPI consists of 6 files/directories that should be uploaded to the directory you want to turn into an API.
 
 .htaccess
 index.php
-methods/
+public/
 tinyapi/
 tinyapi/main.php
-tinyapi/lib/
-tinyapi/lib/array_to_xml.inc.php
+tinyapi/lib/formatters/xml.inc.php
 
+Beyond that, all you have to do is write your code. There is no special sauce. Place PHP scripts into the public/ directory that return either a static class (the String class name actually), an instance, or a regular class. TinyAPI will get to the public methods on that class and call them based on requested URLs.
+
+Routing is simple. Primarily, a URL is mapped directly to your folder structure in public/. That means example.com/api/test/test2/test3 maps to the index() method for the class in public/test/test2/test3.php.  If TinyAPI can't find that, it will try looking for a test3() method defined in public/test/test2.php.  Failing that, it will try to call a test2_test3() method on the class in public/test.php.  Each time a routing attemp fails, TinyAPI will try to call an error() method on the class it finds - if that method exists, it gets control of the request.
+
+Sub-routing works exactly the same way, with one added feature. Sub-routing is a way of accessing the methods you have exposed through TinyAPI without making a secondary HTTP request. When requesting sub-routed methods, you will get the array returned from the method, or FALSE if it failed. To request a sub-routed method, call API::exec('url/of/method', $optional_get, $optional_post).  You can check out a typical example in public/test.php.
+
+I hope you find this useful! You can reach me at jason [@] dvlpt [.] com
